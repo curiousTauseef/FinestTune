@@ -7,11 +7,14 @@ from keras.layers.core import Dense, Dropout, Activation, Merge
 from keras.layers.embeddings import Embedding
 from keras.optimizers import Adadelta
 import finest.utils.lookup as lookup
+import data_processor as processor
+import os
 
 pos_dim = 20  # TODO read from data
 window_size = 5
 embedding_size = 300
 voca_size = 300000  # TODO read from data
+word2vec_path = "/Users/zhengzhongliu/Documents/projects/data/word2vec/GoogleNews-vectors-negative300.bin"
 
 
 class HParam:
@@ -40,7 +43,7 @@ class PosMlp:
         layers = []
         for i in range(0, window_size):
             layers.append(
-                self.model.add(Embedding(output_dim=HParam.vector_dim, input_dim=voca_size, weights=embeddings)))
+                self.model.add(Embedding(output_dim=embedding_size, input_dim=voca_size, weights=embeddings)))
         # TODO check concat axis index.
         return Merge(layers, mode='concat', concat_axis=1)
 
@@ -54,44 +57,26 @@ class PosMlp:
         self.model.evaluate(x_test, y_test)
 
 
-class DataReader:
-    def __init__(self):
-        pass
-
-    def read_conll(self, path):
-        data = []
-        words = []
-        poses = []
-        voca = set()
-        pos_voca = set()
-        with open(path) as f:
-            for l in f:
-                if l.strip() == "":
-                    data.append((words[:], poses[:]))
-                    words = []
-                    poses = []
-                parts = l.split()
-                word = parts[1]
-                pos = parts[4]
-                words.append(word)
-                poses.append(pos)
-                voca.add(word)
-                pos_voca.add(pos)
-        return data, list(voca), pos_voca
-
-
 def main():
-    reader = DataReader()
-    wsj_train, voca, pos_voca = reader.read_conll("../data/brown_wsj_conll/eng.train.wsj.original")
-    wsj_test, _, _ = reader.read_conll("../data/brown_wsj_conll/eng.test.wsj.original")
+    word_sentences_train, pos_sentences_train, word_alphabet, pos_alphabet = processor.read_conll(
+        "/Users/zhengzhongliu/Documents/projects/data/brown_wsj_conll/eng.train.wsj.original", window_size / 2)
 
-    w2v_table = lookup.w2v_lookup(voca, "../data/word2vec")  # TODO download it.
+    word_sentences_test, pos_sentences_test, _, _ = processor.read_conll(
+        "/Users/zhengzhongliu/Documents/projects/data/brown_wsj_conll/eng.test.wsj.original", window_size / 2)
+
+    w2v_table = lookup.w2v_lookup(word_alphabet, word2vec_path)
 
     mlp = PosMlp()
     mlp.setup(w2v_table)
 
-    # TODO convert data with a sliding window.
-    mlp.train()
+    x_train = processor.sliding_window(word_sentences_train, word_alphabet, window_size)
+    y_train = processor.sliding_window(pos_sentences_train, pos_alphabet, window_size)
+
+    x_test = processor.sliding_window(word_sentences_train, word_alphabet, window_size)
+    y_test = processor.sliding_window(pos_sentences_test, pos_alphabet, window_size)
+
+    mlp.train(x_train, y_train)
+    mlp.test(x_test, y_test)
 
 
 if __name__ == '__main__':
