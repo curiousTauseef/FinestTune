@@ -1,8 +1,9 @@
 class Alphabet:
-    def __init__(self, special_instances=[]):
+    def __init__(self, special_instances=(), keep_growing=True):
         self.next_index = 0
         self.instance2index = {}
         self.instances = []
+        self.keep_growing = keep_growing
         for instance in special_instances:
             self.add(instance)
 
@@ -13,7 +14,12 @@ class Alphabet:
             self.next_index += 1
 
     def get_index(self, instance):
-        return self.instance2index[instance]
+        try:
+            return self.instance2index[instance]
+        except KeyError:
+            index = self.next_index
+            self.add(instance)
+            return index
 
     def get_instance(self, index):
         return self.instances[index]
