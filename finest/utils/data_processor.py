@@ -36,19 +36,20 @@ def read_conll(path):
 
 def slide_sentence(words, alphabet, window_size):
     if window_size % 2 == 0:
-        raise ValueError("Window size should be odd, otherwise there is not focus.")
+        raise ValueError("Window size should be odd, otherwise there is no focus.")
     padding_size = window_size / 2
     paddings = [padding_symbol] * padding_size
     padded_words = paddings + words + paddings
 
     num_slices = len(words)
-    slided_data = np.empty([num_slices, window_size])
+    slided_data = np.empty([num_slices, window_size], dtype=int)
 
     if window_size > len(padded_words):
         # This should not happen because of padding, unless there is no words.
         raise IndexError("Window size [%d] cannot be larger than instances size [%d], word size is [%d]." %
                          (window_size, len(padded_words), len(words)))
 
+    # Create the window, initialized with [0: window_size]
     window = deque()
     window_right = 0
     while window_right < window_size:
@@ -56,25 +57,44 @@ def slide_sentence(words, alphabet, window_size):
         window_right += 1
 
     slice_index = 0
+
     while window_right < len(padded_words):
-        for window_index, word in enumerate(window):
-            voca_index = alphabet.get_index(word)
-            slided_data[slice_index, window_index] = voca_index
+        copy_window(window, alphabet, slided_data, slice_index)
+
+        # Move the window to right.
         window.popleft()
         window.append(padded_words[window_right])
         window_right += 1
+        slice_index += 1
 
+    # Copy the missing last one.
+    copy_window(window, alphabet, slided_data, slice_index)
     return slided_data
+
+
+def copy_window(window, alphabet, slided_data, slice_index):
+    # Copy content from the sliding window.
+    for window_index, word in enumerate(window):
+        voca_index = alphabet.get_index(word)
+        slided_data[slice_index, window_index] = voca_index
 
 
 def slide_all_sentences(sentences, alphabet, window_size):
     slice_list = []
     for sentence in sentences:
-        slice_list.append(slide_sentence(sentence, alphabet, window_size))
+        slided_sentence = slide_sentence(sentence, alphabet, window_size)
+        slice_list.append(slided_sentence)
     return np.vstack(slice_list)
 
 
 def get_one_hot(instances, alphabet):
+    """
+    Represent each single element in the list with a one-hot vector.
+    :param instances: The list of the elements.
+    :param alphabet: Lookup alphabet for the element's index.
+    :return: Numpy array of one-hot vectors.
+    """
+
     labels = np.zeros([len(instances), alphabet.size()])
     for index, instance in enumerate(instances):
         labels[index, alphabet.get_index(instance)] = 1

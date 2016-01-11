@@ -1,11 +1,16 @@
 """
-Implement the Multi-layer perceptron based POS tagger, following the Senna approach.
+Implement the Multi-layer perceptron based sequence tagger, following the Senna approach. It can be used for tasks like
+POS and NER.
 """
 
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation, Merge, Flatten, TimeDistributedMerge
+from keras.callbacks import EarlyStopping
 from keras.layers.embeddings import Embedding
 from keras.optimizers import Adadelta
+from keras.models import model_from_json
+import json
+import os
 
 
 class HParams:
@@ -14,20 +19,24 @@ class HParams:
 
     num_hidden_units = 300
 
-    # Relu is only avaiable in development at the moment
+    # Relu is only available in development at the moment
     hidden_activation = "relu"
 
 
-class PosMlp:
-    def __init__(self, pos_dim, embedding_size, vocabulary_size, window_size):
+class LabelingMlp:
+    def __init__(self, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
         self.model = Sequential()
         self.window_size = window_size
-        self.embedding_size = embedding_size
+        self.embedding_size = embeddings.shape[1]
         self.vocabulary_size = vocabulary_size
         self.pos_dim = pos_dim
+        self.__weights_name__ = "weights.h5"
+        self.__architecture_name__ = "architecture"
+
+        self.setup(embeddings, fix_embedding)
 
         print "Pos Labels : %d, Embedding Dimension : %d, Vocabulary Size : %d" % (
-            pos_dim, embedding_size, vocabulary_size)
+            self.pos_dim, self.embedding_size, self.vocabulary_size)
 
     def setup(self, embeddings, fix_embedding=False):
         print "Setting up layers."
@@ -62,16 +71,40 @@ class PosMlp:
         print "Training the model with validation."
         self.model.fit(x_train, y_train, validation_split=validation_split)
 
-    def train(self, x_train, y_train):
+    def train(self, x_train, y_train, early_stop=True):
         """
         Train the data.
         :param x_train: A 2-D array of shape [nb_samples, window size], which represent all the windowed sequence.
         :param y_train: A 2-D array of shape [nb_samples, nb_classes], which are one hot vector of the output.
+        :param early_stop: Whether to early stop the model.
         :return:
         """
         print "Training the model."
-        self.model.fit(x_train, y_train)
+        if early_stop:
+            self.model.fit(x_train, y_train)
+        else:
+            early_stopping = EarlyStopping(monitor='val_loss', patience=2)
+            self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[early_stopping])
 
     def test(self, x_test, y_test):
         print "Testing the model."
         self.model.evaluate(x_test, y_test)
+
+    def save(self, model_directory):
+        """
+        Save both the model architecture and the weights to the given directory.
+        :param model_directory: Directory to save model and weights.
+        :return:
+        """
+        json.dump(self.model.to_json(), open(os.path.join(model_directory, self.__architecture_name__), 'w'))
+        self.model.save_weights(os.path.join(model_directory, self.__weights_name__))
+
+    def load(self, model_directory):
+        """
+        Load model architecture and weights from the give directory. This allow we use old models even the structure
+        changes.
+        :param model_directory: Directory to save model and weights
+        :return:
+        """
+        self.model = model_from_json(open(os.path.join(model_directory, self.__architecture_name__)).read())
+        self.model.load_weights(os.path.join(model_directory, self.__weights_name__))
