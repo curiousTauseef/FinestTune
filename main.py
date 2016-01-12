@@ -25,8 +25,12 @@ def ensure_dir(p):
 
 
 def main():
-    logger = logging.getLogger()
+    logger = logging.getLogger("FinestTune")
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setLevel(logging.INFO)
+    stream_handler.setFormatter(formatter)
     logger.addHandler(stream_handler)
 
     logger.info("Loading conll data.")

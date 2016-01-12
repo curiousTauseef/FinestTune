@@ -71,12 +71,12 @@ class LabelingMlp:
         """
         self.logger.info("Training the model.")
         if early_stop:
-            hist = self.model.fit(x_train, y_train)
-        else:
             monitor = 'val_loss'
-            early_stopping = EarlyStopping(monitor=monitor, patience=2)
-            validation_loss = MonitorLoss(logger=self.logger, monitor=monitor)
-            hist = self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[early_stopping, validation_loss])
+            early_stopping = EarlyStopping(monitor=monitor, patience=2, verbose=1)
+            monitor_loss = MonitorLoss(logger=self.logger, monitor=monitor)
+            hist = self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[early_stopping, monitor_loss])
+        else:
+            hist = self.model.fit(x_train, y_train)
 
         return hist
 

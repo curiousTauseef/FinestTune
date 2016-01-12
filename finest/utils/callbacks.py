@@ -8,4 +8,8 @@ class MonitorLoss(Callback):
         self.monitor = monitor
 
     def on_epoch_end(self, epoch, logs={}):
-        self.logger.info("Epoch %05d : validation loss is %.2f" % (epoch, logs.get(self.monitor)))
+        current = logs.get(self.monitor)
+        if current is None:
+            self.logger.info("Cannot record loss, %s is not available" % self.monitor)
+        else:
+            self.logger.info("Epoch %05d : validation loss is %.2f" % (epoch, current))
