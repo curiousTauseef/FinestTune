@@ -11,6 +11,7 @@ from keras.optimizers import Adadelta
 from keras.models import model_from_json
 import json
 import os
+from finest.utils.callbacks import MonitorLoss
 
 
 class HParams:
@@ -24,7 +25,9 @@ class HParams:
 
 
 class LabelingMlp:
-    def __init__(self, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
+    def __init__(self, logger, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
+        self.logger = logger
+
         self.model = Sequential()
         self.window_size = window_size
         self.embedding_size = embeddings.shape[1]
@@ -35,17 +38,16 @@ class LabelingMlp:
 
         self.setup(embeddings, fix_embedding)
 
-        print "Pos Labels : %d, Embedding Dimension : %d, Vocabulary Size : %d" % (
-            self.pos_dim, self.embedding_size, self.vocabulary_size)
+        self.logger.info("Pos Labels : %d, Embedding Dimension : %d, Vocabulary Size : %d" % (
+            self.pos_dim, self.embedding_size, self.vocabulary_size))
 
     def setup(self, embeddings, fix_embedding=False):
-        print "Setting up layers."
-        # self.model.add(self.__window_lookup_layer(embeddings, fix_embedding))
+        self.logger.info("Setting up layers.")
         self.model.add(Embedding(output_dim=self.embedding_size, input_dim=self.vocabulary_size,
                                  weights=[embeddings], input_length=self.window_size, trainable=not fix_embedding))
-        print "Embedded sequence output is %s" % str(self.model.output_shape)
+        self.logger.info("Embedded sequence output is %s" % str(self.model.output_shape))
         self.model.add(Flatten())
-        print "Flattened output is %s" % str(self.model.output_shape)
+        self.logger.info("Flattened output is %s" % str(self.model.output_shape))
         self.model.add(Dense(output_dim=HParams.num_hidden_units, init='uniform'))
         self.model.add(Activation(HParams.hidden_activation))
         self.model.add(Dense(output_dim=HParams.num_hidden_units, init='uniform'))
@@ -53,22 +55,10 @@ class LabelingMlp:
         self.model.add(Dense(output_dim=self.pos_dim, init='uniform'))
         self.model.add(Activation('softmax'))
         self.model.compile(loss='categorical_crossentropy', optimizer=Adadelta())
-        print "Done setting layers."
-
-    # def __window_lookup_layer(self, embeddings, fix_embedding):
-    #     layers = []
-    #     for i in range(0, self.window_size):
-    #         next_embedding = Embedding(output_dim=self.embedding_size, input_dim=self.vocabulary_size,
-    #                                  weights=[embeddings], input_length=self.window_size, trainable=not fix_embedding)
-    #         layers.append(next_embedding)
-    #
-    #     # Concate the layers with the last axis, i.e. the embedding dimension.
-    #     window_layer = Merge(layers, mode='concat')
-    #     print window_layer.output_shape
-    #     return window_layer
+        self.logger.info("Done setting layers.")
 
     def train_with_validation(self, x_train, y_train, validation_split=0.1):
-        print "Training the model with validation."
+        self.logger.info("Training the model with validation.")
         self.model.fit(x_train, y_train, validation_split=validation_split)
 
     def train(self, x_train, y_train, early_stop=True):
@@ -79,15 +69,19 @@ class LabelingMlp:
         :param early_stop: Whether to early stop the model.
         :return:
         """
-        print "Training the model."
+        self.logger.info("Training the model.")
         if early_stop:
-            self.model.fit(x_train, y_train)
+            hist = self.model.fit(x_train, y_train)
         else:
-            early_stopping = EarlyStopping(monitor='val_loss', patience=2)
-            self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[early_stopping])
+            monitor = 'val_loss'
+            early_stopping = EarlyStopping(monitor=monitor, patience=2)
+            validation_loss = MonitorLoss(logger=self.logger, monitor=monitor)
+            hist = self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[early_stopping, validation_loss])
+
+        return hist
 
     def test(self, x_test, y_test):
-        print "Testing the model."
+        self.logger.info("Testing the model.")
         self.model.evaluate(x_test, y_test)
 
     def save(self, model_directory):
