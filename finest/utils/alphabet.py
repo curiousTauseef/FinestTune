@@ -63,16 +63,18 @@ class Alphabet:
         self.instances = data['instances']
         self.instance2index = data['instance2index']
 
-    def save(self, output_directory):
+    def save(self, output_directory, name=None):
         """
-        Save both the model architecture and the weights to the given directory.
+        Save both alhpabet records to the given directory.
         :param output_directory: Directory to save model and weights.
+        :param name: The alphabet saving name, optional.
         :return:
         """
+        saving_name = name if name else self.__name
         try:
-            json.dump(self.to_json(), open(os.path.join(output_directory, self.__name), 'w'))
+            json.dump(self.to_json(), open(os.path.join(output_directory, saving_name), 'w'))
         except Exception as e:
-            self.logger.warn("Model structure is not saved: " % repr(e))
+            self.logger.warn("Alphabet is not saved: " % repr(e))
 
     def load(self, input_directory):
         """

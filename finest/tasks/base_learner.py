@@ -9,6 +9,7 @@ import os
 from finest.utils.callbacks import MonitorLoss
 from abc import ABCMeta, abstractmethod
 import finest.utils.utils as utils
+from keras.utils.visualize_util import plot
 
 
 class BaseLearner:
@@ -19,8 +20,9 @@ class BaseLearner:
         self.model = self._get_model()
         self.setup()
         self.__monitor = 'val_acc'
-        self.__weights_name = "weights.h5"
-        self.__architecture_name = "architecture"
+        self.__weights_name = 'weights.h5'
+        self.__architecture_name = 'architecture'
+        self.__model_graph_name = 'structure.png'
 
     @abstractmethod
     def _get_model(self):
@@ -33,9 +35,10 @@ class BaseLearner:
     def train_with_validation(self, x_train, y_train, x_val, y_val, early_stop=True):
         self.logger.info("Training the model with provided validation.")
         if early_stop:
-            hist = self.model.fit(x_train, y_train, validation_data=(x_val, y_val), callbacks=[self.__get_early_stop()])
+            hist = self.model.fit(x_train, y_train, validation_data=(x_val, y_val), callbacks=[self.__get_early_stop()],
+                                  show_accuracy=True)
         else:
-            hist = self.model.fit(x_train, y_train, validation_data=(x_val, y_val),
+            hist = self.model.fit(x_train, y_train, validation_data=(x_val, y_val), show_accuracy=True,
                                   callbacks=[self.__get_loss_monitor()])
         return hist
 
@@ -49,9 +52,10 @@ class BaseLearner:
         """
         self.logger.info("Training the model.")
         if early_stop:
-            hist = self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[self.__get_early_stop()])
+            hist = self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[self.__get_early_stop()],
+                                  show_accuracy=True)
         else:
-            hist = self.model.fit(x_train, y_train, callbacks=[self.__get_loss_monitor()])
+            hist = self.model.fit(x_train, y_train, callbacks=[self.__get_loss_monitor()], show_accuracy=True)
         return hist
 
     def __get_early_stop(self):
@@ -70,11 +74,27 @@ class BaseLearner:
         :param model_directory: Directory to save model and weights.
         :return:
         """
+        self.presave(model_directory)
+        self.postsave(model_directory)
+
+    def presave(self, model_directory):
+        """
+        Save the model architecture to the given directory.
+        :param model_directory: Directory to save model and weights.
+        :return:
+        """
         try:
             json.dump(self.model.to_json(), open(os.path.join(model_directory, self.__architecture_name), 'w'))
         except Exception as e:
-            self.logger.warn("Model structure is not saved: " % repr(e))
+            self.logger.warn("Model structure is not saved due to: %s" % repr(e))
+        plot(self.model, to_file=os.path.join(model_directory, self.__model_graph_name))
 
+    def postsave(self, model_directory):
+        """
+        Save the weights to the given directory.
+        :param model_directory: Directory to save model and weights.
+        :return:
+        """
         self.model.save_weights(os.path.join(model_directory, self.__weights_name))
 
     def load(self, model_directory):

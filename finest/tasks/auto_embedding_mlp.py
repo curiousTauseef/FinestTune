@@ -3,8 +3,8 @@ Implement the Multi-layer perceptron based sequence tagger, following the Senna 
 POS and NER.
 """
 
-from keras.models import Sequential, Graph
-from keras.layers.core import Dense, Activation, Flatten
+from keras.models import Graph
+from keras.layers.core import Dense, Flatten
 from keras.layers.embeddings import Embedding
 from keras.optimizers import Adadelta
 from keras.regularizers import l2
@@ -31,7 +31,7 @@ class HParams:
     optimizer = Adadelta()
 
 
-class LabelingMlp(BaseLearner):
+class AutoEmbeddingMlp(BaseLearner):
     def __init__(self, logger, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
         self.window_size = window_size
         self.embeddings = embeddings
@@ -40,7 +40,7 @@ class LabelingMlp(BaseLearner):
         self.vocabulary_size = vocabulary_size
         self.pos_dim = pos_dim
 
-        super(LabelingMlp, self).__init__()
+        super(AutoEmbeddingMlp, self).__init__()
 
         self.logger.info("Pos Labels : %d, Embedding Dimension : %d, Vocabulary Size : %d" % (
             self.pos_dim, self.embedding_size, self.vocabulary_size))
