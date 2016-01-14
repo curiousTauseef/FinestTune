@@ -12,4 +12,4 @@ class MonitorLoss(Callback):
         if current is None:
             self.logger.info("Cannot record loss, %s is not available" % self.monitor)
         else:
-            self.logger.info("Epoch %05d : validation loss is %.2f" % (epoch, current))
+            self.logger.info("Epoch %05d : validation loss is %.4f" % (epoch, current))

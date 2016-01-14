@@ -1,7 +1,6 @@
 import numpy as np
 from collections import deque
 from finest.utils.alphabet import Alphabet
-import sys
 
 padding_symbol = "##PADDING##"
 
@@ -12,8 +11,8 @@ def read_conll(path):
     words = []
     poses = []
 
-    word_alphabet = Alphabet((padding_symbol,))
-    pos_alphabet = Alphabet((padding_symbol,))
+    word_alphabet = Alphabet('word', (padding_symbol,))
+    pos_alphabet = Alphabet('pos', (padding_symbol,))
 
     with open(path) as f:
         for l in f:
@@ -82,8 +81,9 @@ def copy_window(window, alphabet, slided_data, slice_index):
 def slide_all_sentences(sentences, alphabet, window_size):
     slice_list = []
     for sentence in sentences:
-        slided_sentence = slide_sentence(sentence, alphabet, window_size)
-        slice_list.append(slided_sentence)
+        if len(sentence) > 0:
+            slided_sentence = slide_sentence(sentence, alphabet, window_size)
+            slice_list.append(slided_sentence)
     return np.vstack(slice_list)
 
 
