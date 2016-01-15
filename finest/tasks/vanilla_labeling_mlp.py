@@ -4,7 +4,7 @@ POS and NER.
 """
 
 from keras.models import Sequential
-from keras.layers.core import Dense, Activation, Flatten
+from keras.layers.core import Dense, Flatten
 from keras.layers.embeddings import Embedding
 from keras.optimizers import Adadelta
 from keras.regularizers import l2
@@ -28,7 +28,7 @@ class HParams:
 
 
 class VanillaLabelingMlp(BaseLearner):
-    def __init__(self, logger, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
+    def __init__(self, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
         self.window_size = window_size
         self.embeddings = embeddings
         self.fix_embedding = fix_embedding

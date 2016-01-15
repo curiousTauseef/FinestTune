@@ -41,7 +41,10 @@ class Alphabet:
                 return self.default_index
 
     def get_instance(self, index):
-        return self.instances[index]
+        if index == 0:
+            # First index is occupied by the wildcard element.
+            return None
+        return self.instances[index - 1]
 
     def size(self):
         return len(self.instances) + 1
@@ -49,19 +52,23 @@ class Alphabet:
     def iteritems(self):
         return self.instance2index.iteritems()
 
-    def stop_grow(self):
+    def enumerate_items(self, start=1):
+        if start < 1 or start >= self.size():
+            raise IndexError("Enumerate is allowed between [1 : size of the alphabet)")
+        return zip(range(start, len(self.instances) + 1), self.instances[start - 1:])
+
+    def stop_auto_grow(self):
         self.keep_growing = False
 
-    def restart_grow(self):
+    def restart_auto_grow(self):
         self.keep_growing = True
 
-    def to_json(self):
-        return json.dumps({'instance2index': self.instance2index, 'instances': self.instances})
+    def get_content(self):
+        return {'instance2index': self.instance2index, 'instances': self.instances}
 
-    def from_json(self, json_obj):
-        data = json.load(json_obj)
-        self.instances = data['instances']
-        self.instance2index = data['instance2index']
+    def from_json(self, data):
+        self.instances = data["instances"]
+        self.instance2index = data["instance2index"]
 
     def save(self, output_directory, name=None):
         """
@@ -72,15 +79,16 @@ class Alphabet:
         """
         saving_name = name if name else self.__name
         try:
-            json.dump(self.to_json(), open(os.path.join(output_directory, saving_name), 'w'))
+            json.dump(self.get_content(), open(os.path.join(output_directory, saving_name + ".json"), 'w'))
         except Exception as e:
             self.logger.warn("Alphabet is not saved: " % repr(e))
 
-    def load(self, input_directory):
+    def load(self, input_directory, name=None):
         """
         Load model architecture and weights from the give directory. This allow we use old models even the structure
         changes.
         :param input_directory: Directory to save model and weights
         :return:
         """
-        self.from_json(open(os.path.join(input_directory, self.__name)).read())
+        loading_name = name if name else self.__name
+        self.from_json(json.load(open(os.path.join(input_directory, loading_name + ".json"))))

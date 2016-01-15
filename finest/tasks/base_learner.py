@@ -7,28 +7,23 @@ from keras.models import model_from_json
 import json
 import os
 from finest.utils.callbacks import MonitorLoss
-from abc import ABCMeta, abstractmethod
 import finest.utils.utils as utils
 from keras.utils.visualize_util import plot
 
 
-class BaseLearner:
-    __metaclass__ = ABCMeta
-
+class BaseLearner(object):
     def __init__(self):
         self.logger = utils.get_logger('Learner')
         self.model = self._get_model()
         self.setup()
         self.__monitor = 'val_acc'
         self.__weights_name = 'weights.h5'
-        self.__architecture_name = 'architecture'
+        self.__architecture_name = 'architecture.json'
         self.__model_graph_name = 'structure.png'
 
-    @abstractmethod
     def _get_model(self):
         pass
 
-    @abstractmethod
     def setup(self):
         pass
 
@@ -66,7 +61,7 @@ class BaseLearner:
 
     def test(self, x_test, y_test):
         self.logger.info("Testing the model.")
-        return self.model.evaluate(x_test, y_test)
+        return self.model.evaluate(x_test, y_test, show_accuracy=True)
 
     def save(self, model_directory):
         """
@@ -84,7 +79,7 @@ class BaseLearner:
         :return:
         """
         try:
-            json.dump(self.model.to_json(), open(os.path.join(model_directory, self.__architecture_name), 'w'))
+            open(os.path.join(model_directory, self.__architecture_name), 'w').write(self.model.to_json())
         except Exception as e:
             self.logger.warn("Model structure is not saved due to: %s" % repr(e))
         plot(self.model, to_file=os.path.join(model_directory, self.__model_graph_name))
