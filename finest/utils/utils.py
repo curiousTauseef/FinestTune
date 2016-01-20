@@ -1,5 +1,7 @@
 import logging
 import sys
+import os
+import psutil
 
 
 def get_logger(name, level=logging.INFO, handler=sys.stdout,
@@ -13,3 +15,8 @@ def get_logger(name, level=logging.INFO, handler=sys.stdout,
     logger.addHandler(stream_handler)
 
     return logger
+
+
+def get_memory_usage():
+    process = psutil.Process(os.getpid())
+    print process.memory_info().rss

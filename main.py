@@ -12,6 +12,8 @@ import datetime
 import finest.utils.utils as utils
 import argparse
 
+import sys
+
 word2vec_path = "../data/word2vec/GoogleNews-vectors-negative300.bin"
 # word2vec_path = "../data/word2vec/vectors.bin"
 model_output_base = "../models/FinestTune/pos"
@@ -124,6 +126,10 @@ def test(trained_models, use_random_test, test_conll, window_size):
 
 
 def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, data_name):
+    logger.info("Before loading training and dev data")
+    utils.get_memory_usage()
+    # sys.stdin.readline()
+
     logger.info("Loading CoNLL data.")
     word_sentences_train, pos_sentences_train, word_alphabet, pos_alphabet = processor.read_conll(train_conll)
 
@@ -144,7 +150,19 @@ def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, 
     x_dev = processor.slide_all_sentences(word_sentences_dev, word_alphabet, window_size)
     y_dev = processor.get_all_one_hots(pos_sentences_dev, pos_alphabet)
 
+    logger.info("After loading training and dev data")
+    utils.get_memory_usage()
+    # sys.stdin.readline()
+
+    logger.info("Before loading embeddings")
+    utils.get_memory_usage()
+    # sys.stdin.readline()
+
     embeddings = lookup.w2v_lookup(word_alphabet, word2vec_path, not use_random_test)
+
+    logger.info("After loading embeddings")
+    utils.get_memory_usage()
+    # sys.stdin.readline()
 
     logger.info("Training data dimension is %s, here is a sample:" % (str(x_train.shape)))
     logger.info(x_train[0])
