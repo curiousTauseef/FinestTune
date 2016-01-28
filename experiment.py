@@ -126,8 +126,8 @@ def test(trained_models, oov, test_conll, window_size):
 
 
 def train(model_to_train, oov, train_conll, dev_conll, window_size, data_name):
-    logger.info("Before loading training and dev data")
-    utils.get_memory_usage()
+    # logger.info("Before loading training and dev data")
+    # utils.get_memory_usage()
     # sys.stdin.readline()
 
     logger.info("Loading CoNLL data.")
@@ -153,18 +153,18 @@ def train(model_to_train, oov, train_conll, dev_conll, window_size, data_name):
     # alphabet stop growing
     word_alphabet.stop_auto_grow()
 
-    logger.info("After loading training and dev data")
-    utils.get_memory_usage()
+    # logger.info("After loading training and dev data")
+    # utils.get_memory_usage()
     # sys.stdin.readline()
 
-    logger.info("Before loading embeddings")
-    utils.get_memory_usage()
+    # logger.info("Before loading embeddings")
+    # utils.get_memory_usage()
     # sys.stdin.readline()
 
     embeddings = lookup.w2v_lookup(word_alphabet, word2vec_path)
 
-    logger.info("After loading embeddings")
-    utils.get_memory_usage()
+    # logger.info("After loading embeddings")
+    # utils.get_memory_usage()
     # sys.stdin.readline()
 
     logger.info("Training data dimension is %s, here is a sample:" % (str(x_train.shape)))
