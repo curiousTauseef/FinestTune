@@ -83,7 +83,7 @@ def save(model, model_output, word_alphabet, pos_alphabet, history):
     postsave(model, model_output, word_alphabet, pos_alphabet, history)
 
 
-def read_models(data_name, model, use_random_test):
+def read_models(data_name, model, oov):
     logger.info("Loading models from disk.")
 
     models = {}
@@ -92,7 +92,7 @@ def read_models(data_name, model, use_random_test):
 
     for t in models_to_load:
         model = BaseLearner()
-        model_dir = get_model_directory(data_name, t, use_random_test)
+        model_dir = get_model_directory(data_name, t, oov)
         model.load(model_dir)
 
         pos_alphabet = Alphabet('pos')
@@ -108,13 +108,13 @@ def read_models(data_name, model, use_random_test):
     return models
 
 
-def get_model_directory(data_set_name, model_name, use_random_test):
-    suffix = "_rand" if use_random_test else ""
+def get_model_directory(data_set_name, model_name, oov):
+    suffix = "_" + oov
     return os.path.join(model_output_base, data_set_name, model_name + suffix)
 
 
-def test(trained_models, use_random_test, test_conll, window_size):
-    logger.info("Testing condition - [Use random vector] : %s ; [Test Data] : %s ." % (use_random_test, test_conll))
+def test(trained_models, oov, test_conll, window_size):
+    logger.info("Testing condition - [OOV Vector] : %s ; [Test Data] : %s ." % (oov, test_conll))
     for model_name, (model, pos_alphabet, word_alphabet) in trained_models.iteritems():
         word_sentences_test, pos_sentences_test, _, _ = processor.read_conll(test_conll)
         x_test = processor.slide_all_sentences(word_sentences_test, word_alphabet, window_size)
@@ -125,7 +125,7 @@ def test(trained_models, use_random_test, test_conll, window_size):
         logger.info("Direct test results are [%s] by model %s." % (result_as_list, model_name))
 
 
-def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, data_name):
+def train(model_to_train, oov, train_conll, dev_conll, window_size, data_name):
     logger.info("Before loading training and dev data")
     utils.get_memory_usage()
     # sys.stdin.readline()
@@ -141,7 +141,7 @@ def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, 
     x_train = processor.slide_all_sentences(word_sentences_train, word_alphabet, window_size)
     y_train = processor.get_all_one_hots(pos_sentences_train, pos_alphabet)
 
-    if use_random_test:
+    if oov == 'random':
         logger.info("Dev set word vectors are not added to alphabet.")
         word_alphabet.stop_auto_grow()
 
@@ -149,6 +149,9 @@ def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, 
 
     x_dev = processor.slide_all_sentences(word_sentences_dev, word_alphabet, window_size)
     y_dev = processor.get_all_one_hots(pos_sentences_dev, pos_alphabet)
+
+    # alphabet stop growing
+    word_alphabet.stop_auto_grow()
 
     logger.info("After loading training and dev data")
     utils.get_memory_usage()
@@ -158,7 +161,7 @@ def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, 
     utils.get_memory_usage()
     # sys.stdin.readline()
 
-    embeddings = lookup.w2v_lookup(word_alphabet, word2vec_path, not use_random_test)
+    embeddings = lookup.w2v_lookup(word_alphabet, word2vec_path)
 
     logger.info("After loading embeddings")
     utils.get_memory_usage()
@@ -172,12 +175,12 @@ def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, 
 
     models = {}
     if model_to_train == 'vanilla' or model_to_train == 'all':
-        model_output = get_model_directory(data_name, 'vanilla', use_random_test)
+        model_output = get_model_directory(data_name, 'vanilla', oov)
         mlp_model = train_vanilla_mlp(x_train, y_train, x_dev, y_dev, embeddings, pos_alphabet, word_alphabet,
                                       window_size, model_output)
         models['vanilla'] = (mlp_model, pos_alphabet, word_alphabet)
     if model_to_train == 'auto' or model_to_train == 'all':
-        model_output = get_model_directory(data_name, 'auto', use_random_test)
+        model_output = get_model_directory(data_name, 'auto', oov)
         mlp_model = train_auto_embedding_mlp(x_train, y_train, x_dev, y_dev, embeddings, pos_alphabet,
                                              word_alphabet, window_size, model_output)
         models['auto'] = (mlp_model, pos_alphabet, word_alphabet)
@@ -186,8 +189,7 @@ def train(model_to_train, use_random_test, train_conll, dev_conll, window_size, 
 
 def main():
     parser = argparse.ArgumentParser(description='Tuning with multi-layer perceptrons')
-    parser.add_argument('--random_test_vector', help='Start unseen test randomly, do not use pre-trained vectors',
-                        action='store_true')
+    parser.add_argument('--oov', choices=['random', 'word2vec'], help='Embedding for oov word', required=True)
     parser.add_argument('--model', choices=['vanilla', 'auto', 'all'], help='The models to train/test.', required=True)
     parser.add_argument('--train', action='store_true')
     parser.add_argument('--test', action='store_true')
@@ -207,13 +209,13 @@ def main():
     models = {}
     if args.train:
         # If training now, then we use all the trained models
-        models = train(args.model, args.random_test_vector, train_data, dev_data, args.window_size, args.data_name)
+        models = train(args.model, args.oov, train_data, dev_data, args.window_size, args.data_name)
 
     if args.test:
         if len(models) == 0:
-            models = read_models(args.data_name, args.model, args.random_test_vector)
+            models = read_models(args.data_name, args.model, args.oov)
 
-        test(models, args.random_test_vector, args.test_data, args.window_size)
+        test(models, args.oov, args.test_data, args.window_size)
 
 
 if __name__ == '__main__':
