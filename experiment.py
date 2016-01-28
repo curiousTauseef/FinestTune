@@ -74,8 +74,8 @@ def postsave(model, model_output, word_alphabet, pos_alphabet, history):
     ensure_dir(model_output)
     t = datetime.datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d_%H-%M-%S")
 
-    with open("history_at_" + t, 'w') as history_out:
-        history_out.write(history.history)
+    # with open("history_at_" + t, 'w') as history_out:
+    #     history_out.write(history.history)
 
 
 def save(model, model_output, word_alphabet, pos_alphabet, history):
