@@ -91,8 +91,8 @@ class VanillaLabelingMlp(BaseLearner):
 
         # Add output layer.
         self.model.add_node(Dense(output_dim=self.pos_dim, init='uniform', W_regularizer=l2(),
-                                  activation=HParams.output_layer_type), name=self._main_output_layer_name,
-                            input=previous_name, create_output=True)
+                                  activation=HParams.output_layer_type), name='pos_output', input=previous_name)
+        self.model.add_output(name=self._main_output_layer_name, input='pos_output')
 
         self.logger.info("Prepare to compile.")
         self.model.compile(loss={self._main_output_layer_name: HParams.output_loss}, optimizer=HParams.optimizer)

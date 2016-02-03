@@ -176,7 +176,10 @@ def main():
 
     oov_embedding = args.oov
 
-    lookup = Lookup(args.word2vec)
+    if args.train or not args.oov == 'random':
+        lookup = Lookup(args.word2vec)
+    else:
+        lookup = None
 
     models = {}
     if args.train is not None:

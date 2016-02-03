@@ -134,7 +134,6 @@ class BaseLearner(object):
         :param model_directory: Directory to save model and weights
         :return:
         """
-        # TODO cannot load the model we save??? Why duplicate layer?
         self.model = model_from_json(open(os.path.join(model_directory, self.__architecture_name)).read())
         self.model.load_weights(os.path.join(model_directory, self.__weights_name))
 
