@@ -32,21 +32,19 @@ class HParams:
 
 
 class AutoEmbeddingMlp(BaseLearner):
-    def __init__(self, logger, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
+    def __init__(self, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
         self.window_size = window_size
         self.embeddings = embeddings
         self.fix_embedding = fix_embedding
         self.embedding_size = embeddings.shape[1]
         self.vocabulary_size = vocabulary_size
         self.pos_dim = pos_dim
+        self._graph_mode = True
 
         super(AutoEmbeddingMlp, self).__init__()
 
         self.logger.info("Pos Labels : %d, Embedding Dimension : %d, Vocabulary Size : %d" % (
             self.pos_dim, self.embedding_size, self.vocabulary_size))
-
-    def _get_model(self):
-        return Graph()
 
     def setup(self):
         self.logger.info("Setting up layers.")
@@ -56,7 +54,7 @@ class AutoEmbeddingMlp(BaseLearner):
 
         concatenated_size = self.vocabulary_size * self.window_size
 
-        self.model.add_input(name='input', input_shape=(self.vocabulary_size, self.window_size))
+        self.model.add_input(name='input', input_shape=(self.window_size,))
 
         # Add embedding layer.
         self.model.add_node(Embedding(output_dim=self.embedding_size, input_dim=self.vocabulary_size,
@@ -73,16 +71,16 @@ class AutoEmbeddingMlp(BaseLearner):
             input_layer_name = 'flatten' if i == 0 else "inner%d" % (i - 1)
 
             self.model.add_node(
-                    Dense(output_dim=HParams.num_hidden_units, init='uniform', W_regularizer=HParams.regularizer,
-                          activation=HParams.hidden_activation),
-                    name='inner%d' % i, inputs=input_layer_name
+                Dense(output_dim=HParams.num_hidden_units, init='uniform', W_regularizer=HParams.regularizer,
+                      activation=HParams.hidden_activation),
+                name='inner%d' % i, inputs=input_layer_name
             )
 
         # Add output layer for the tagging.
         self.model.add_node(
-                Dense(output_dim=self.pos_dim, init='uniform', W_regularizer=HParams.regularizer,
-                      activation=HParams.label_output_layer_type),
-                name='pos_layer', inputs="inner%d" % (HParams.num_middle_layers - 1))
+            Dense(output_dim=self.pos_dim, init='uniform', W_regularizer=HParams.regularizer,
+                  activation=HParams.label_output_layer_type),
+            name='pos_layer', inputs="inner%d" % (HParams.num_middle_layers - 1))
         self.model.add_output(name='pos_output', input='pos_layer')
 
         # Add output layer for the auto encoder.
@@ -92,7 +90,7 @@ class AutoEmbeddingMlp(BaseLearner):
         self.model.add_output(name='auto_output', input='auto_layer')
 
         self.model.compile(
-                loss={'label_output': HParams.layer_output_loss, 'auto_output': HParams.auto_output_loss},
-                optimizer=HParams.optimizer)
+            loss={'label_output': HParams.layer_output_loss, 'auto_output': HParams.auto_output_loss},
+            optimizer=HParams.optimizer)
 
         self.logger.info("Done setting layers.")

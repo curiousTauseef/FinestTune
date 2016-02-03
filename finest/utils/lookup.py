@@ -12,49 +12,34 @@ def uniform_embedding(shape, scale=0.0001):
     return np.random.uniform(low=-scale, high=scale, size=shape)
 
 
-# def augment_lookup(alphabet, table, word2vec_model, use_binary=True):
-#     """
-#     Augment the lookup table with additional alphabet items.
-#     :param alphabet: The extended alphabet.
-#     :param table: The table to be augmented.
-#     :param word2vec_model: The word2vec model path.
-#     :param use_binary: Whether the word2vec model is binary.
-#     """
-#     existing_embedding_size = table.shape()[0]
-#
-#     if alphabet.size() > existing_embedding_size:
-#         logger.info("Alphabet has grown, will update the embedding table.")
-#         logger.info("Loading word2vec ...")
-#         model = Word2Vec.load_word2vec_format(word2vec_model, binary=use_binary)
-#
-#         for index, word in alphabet.enumerate_items(existing_embedding_size):
-#             embedding = model[word] if word in model else uniform_embedding([1, model.vector_size])
-#             table[index, :] = embedding
+class Lookup:
+    def __init__(self, word2vec_model, use_binary=True):
+        """
+        :param word2vec_model: The word2vec model path.
+        :param use_binary: Whether the word2vec model is binary.
+        :return:
+        """
+        logger.info("Loading word2vec ...")
+        self.model = Word2Vec.load_word2vec_format(word2vec_model, binary=use_binary)
+        print("Loading done...")
 
+    def w2v_lookup(self, alphabet):
+        """
+        Create a word2vec lookup table with the word2vec vectors.
+        :param alphabet: The alphabet that stores the words.
+        :return: A numpy array of shape [vocabulary size, dimension], each row is a word embedding.
+        """
+        # if augment_alphabet:
+        #     logger.info("Augment alphabet with pretrained word vectors.")
+        #     for w in model.index2word:
+        #         alphabet.add(w)
 
-def w2v_lookup(alphabet, word2vec_model, use_binary=True):
-    """
-    Create a word2vec lookup table with the word2vec vectors.
-    :param alphabet: The alphabet that stores the words.
-    :param word2vec_model: The word2vec model path.
-    :param use_binary: Whether the word2vec model is binary.
-    :return: A numpy array of shape [vocabulary size, dimension], each row is a word embedding.
-    """
-    logger.info("Loading word2vec ...")
-    model = Word2Vec.load_word2vec_format(word2vec_model, binary=use_binary)
+        logger.info("Take a sub embedding table of size: %d." % alphabet.size())
+        table = np.empty([alphabet.size(), self.model.vector_size])
+        table[alphabet.default_index, :] = uniform_embedding([1, self.model.vector_size])
 
-    # if augment_alphabet:
-    #     logger.info("Augment alphabet with pretrained word vectors.")
-    #     for w in model.index2word:
-    #         alphabet.add(w)
+        for w, index in alphabet.iteritems():
+            embedding = self.model[w] if w in self.model else uniform_embedding([1, self.model.vector_size])
+            table[index, :] = embedding
 
-    table = np.empty([alphabet.size(), model.vector_size])
-
-    table[alphabet.default_index, :] = uniform_embedding([1, model.vector_size])
-
-    for w, index in alphabet.iteritems():
-        embedding = model[w] if w in model else uniform_embedding([1, model.vector_size])
-        table[index, :] = embedding
-
-    print("Loading done...")
-    return table
+        return table
