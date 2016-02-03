@@ -97,14 +97,14 @@ class BaseLearner(object):
             res = self.model.evaluate(x_test, y_test, show_accuracy=True)
         return res
 
-    def save(self, model_directory):
+    def save(self, model_directory, overwrite=False):
         """
         Save both the model architecture and the weights to the given directory.
         :param model_directory: Directory to save model and weights.
         :return:
         """
         self.presave(model_directory)
-        self.postsave(model_directory)
+        self.postsave(model_directory, overwrite)
 
     def presave(self, model_directory):
         """
@@ -113,18 +113,19 @@ class BaseLearner(object):
         :return:
         """
         try:
-            open(os.path.join(model_directory, self.__architecture_name), 'w').write(self.model.to_json())
+            open(os.path.join(model_directory, self.__architecture_name), 'w').write(self.model.to_json(indent=2))
         except Exception as e:
             self.logger.warn("Model structure is not saved due to: %s" % repr(e))
         plot(self.model, to_file=os.path.join(model_directory, self.__model_graph_name))
 
-    def postsave(self, model_directory):
+    def postsave(self, model_directory, overwrite=False):
         """
         Save the weights to the given directory.
         :param model_directory: Directory to save model and weights.
+        :param overwrite: Whether to overwrite the model.
         :return:
         """
-        self.model.save_weights(os.path.join(model_directory, self.__weights_name))
+        self.model.save_weights(os.path.join(model_directory, self.__weights_name), overwrite=overwrite)
 
     def load(self, model_directory):
         """
@@ -133,6 +134,7 @@ class BaseLearner(object):
         :param model_directory: Directory to save model and weights
         :return:
         """
+        # TODO cannot load the model we save??? Why duplicate layer?
         self.model = model_from_json(open(os.path.join(model_directory, self.__architecture_name)).read())
         self.model.load_weights(os.path.join(model_directory, self.__weights_name))
 

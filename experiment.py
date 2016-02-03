@@ -12,13 +12,6 @@ import argparse
 
 import sys
 
-word2vec_path = "../data/word2vec/GoogleNews-vectors-negative300.bin"
-# word2vec_path = "../data/word2vec/vectors.bin"
-model_output_base = "../models/FinestTune/pos"
-
-train_path = "../data/POS-penn/wsj/split1/wsj1.train.original"
-dev_path = "../data/POS-penn/wsj/split1/wsj1.dev.original"
-
 logger = utils.get_logger("Main")
 
 
@@ -27,10 +20,13 @@ def ensure_dir(p):
         os.makedirs(p)
 
 
-def train_model(model, x_train, y_train, x_dev, y_dev, pos_alphabet, word_alphabet, model_output):
+def train_model(model, x_train, y_train, x_dev, y_dev, pos_alphabet, word_alphabet, model_output, overwrite):
     presave(model, model_output, word_alphabet, pos_alphabet)
-    history = model.train_with_validation(x_train, y_train, x_dev, y_dev)
-    postsave(model, model_output)
+    if x_dev is not None and y_dev is not None:
+        history = model.train_with_validation(x_train, y_train, x_dev, y_dev)
+    else:
+        history = model.train(x_train, y_train)
+    postsave(model, model_output, overwrite)
     return model
 
 
@@ -44,18 +40,18 @@ def presave(model, model_output, word_alphabet, pos_alphabet):
     pos_alphabet.save(model_output)
 
 
-def postsave(model, model_output):
+def postsave(model, model_output, overwrite):
     logger.info("Saving model weights at " + model_output)
     ensure_dir(model_output)
-    model.postsave(model_output)
+    model.postsave(model_output, overwrite=overwrite)
 
 
-def save(model, model_output, word_alphabet, pos_alphabet):
+def save(model, model_output, word_alphabet, pos_alphabet, overwrite):
     presave(model, model_output, word_alphabet, pos_alphabet)
-    postsave(model, model_output)
+    postsave(model, model_output, overwrite=overwrite)
 
 
-def read_models(data_name, model, oov):
+def read_models(model_base, data_name, model):
     logger.info("Loading models from disk.")
 
     models = {}
@@ -64,7 +60,7 @@ def read_models(data_name, model, oov):
 
     for t in models_to_load:
         model = BaseLearner()
-        model_dir = get_model_directory(data_name, t, oov)
+        model_dir = get_model_directory(model_base, data_name, t)
         model.load(model_dir)
 
         pos_alphabet = Alphabet('pos')
@@ -80,9 +76,8 @@ def read_models(data_name, model, oov):
     return models
 
 
-def get_model_directory(data_set_name, model_name, oov):
-    suffix = "_" + oov
-    return os.path.join(model_output_base, data_set_name, model_name + suffix)
+def get_model_directory(model_output_base, data_set_name, model_name):
+    return os.path.join(model_output_base, data_set_name, model_name)
 
 
 def test(trained_models, lookup, oov_embedding, test_conll, window_size):
@@ -102,16 +97,19 @@ def test(trained_models, lookup, oov_embedding, test_conll, window_size):
             additional_embeddings = new_embeddings[original_alphabet_size:]
             model.augment_embedding(additional_embeddings)
 
-        evaluate_results = model.test(x_test, y_test)
-        result_as_list = ", ".join("%.4f" % f for f in evaluate_results)
-        logger.info("Direct test results are [%s] by model %s." % (result_as_list, model_name))
+        evaluate_result = model.test(x_test, y_test)
+        try:
+            result_str = ", ".join("%.4f" % f for f in evaluate_result)
+        except TypeError:
+            result_str = "%.4f" % evaluate_result
+        logger.info("Direct test results are [%s] by model %s." % (result_str, model_name))
 
 
-def train(model_to_train, lookup, oov_embedding, train_conll, dev_conll, window_size, data_name):
+def train(model_to_train, model_base, lookup, oov_embedding, train_path, dev_path, window_size, data_name, overwrite):
     logger.info("Loading CoNLL data.")
-    word_sentences_train, pos_sentences_train, word_alphabet, pos_alphabet = processor.read_conll(train_conll)
+    word_sentences_train, pos_sentences_train, word_alphabet, pos_alphabet = processor.read_conll(train_path)
 
-    training_alphabet_output = os.path.join(model_output_base, data_name)
+    training_alphabet_output = os.path.join(model_base, data_name)
     ensure_dir(training_alphabet_output)
     word_alphabet.save(training_alphabet_output, 'training_words')
 
@@ -123,10 +121,11 @@ def train(model_to_train, lookup, oov_embedding, train_conll, dev_conll, window_
         logger.info("Dev set word vectors are not added to alphabet.")
         word_alphabet.stop_auto_grow()
 
-    word_sentences_dev, pos_sentences_dev, _, _ = processor.read_conll(dev_conll)
-
-    x_dev = processor.slide_all_sentences(word_sentences_dev, word_alphabet, window_size)
-    y_dev = processor.get_all_one_hots(pos_sentences_dev, pos_alphabet)
+    x_dev, y_dev = None, None
+    if dev_path:
+        word_sentences_dev, pos_sentences_dev, _, _ = processor.read_conll(dev_path)
+        x_dev = processor.slide_all_sentences(word_sentences_dev, word_alphabet, window_size)
+        y_dev = processor.get_all_one_hots(pos_sentences_dev, pos_alphabet)
 
     # Alphabet stop growing.
     word_alphabet.stop_auto_grow()
@@ -142,16 +141,16 @@ def train(model_to_train, lookup, oov_embedding, train_conll, dev_conll, window_
 
     models = {}
     if model_to_train == 'vanilla' or model_to_train == 'all':
-        model_output = get_model_directory(data_name, 'vanilla', oov_embedding)
+        model_output = get_model_directory(model_base, data_name, 'vanilla')
         mlp = VanillaLabelingMlp(embeddings=embeddings, pos_dim=pos_alphabet.size(),
                                  vocabulary_size=word_alphabet.size(), window_size=window_size)
-        train_model(mlp, x_train, y_train, x_dev, y_dev, pos_alphabet, word_alphabet, model_output)
+        train_model(mlp, x_train, y_train, x_dev, y_dev, pos_alphabet, word_alphabet, model_output, overwrite)
         models['vanilla'] = (mlp, pos_alphabet, word_alphabet)
     if model_to_train == 'auto' or model_to_train == 'all':
-        model_output = get_model_directory(data_name, 'auto', oov_embedding)
+        model_output = get_model_directory(model_base, data_name, 'auto')
         mlp = AutoEmbeddingMlp(embeddings=embeddings, pos_dim=pos_alphabet.size(),
                                vocabulary_size=word_alphabet.size(), window_size=window_size)
-        train_model(mlp, x_train, y_train, x_dev, y_dev, pos_alphabet, word_alphabet, model_output)
+        train_model(mlp, x_train, y_train, x_dev, y_dev, pos_alphabet, word_alphabet, model_output, overwrite)
         models['auto'] = (mlp, pos_alphabet, word_alphabet)
     return models
 
@@ -160,35 +159,36 @@ def main():
     parser = argparse.ArgumentParser(description='Tuning with multi-layer perceptrons')
     parser.add_argument('--oov', choices=['random', 'pretrained'], help='Embedding for oov word', required=True)
     parser.add_argument('--model', choices=['vanilla', 'auto', 'all'], help='The models to train/test.', required=True)
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--train')  # "../data/POS-penn/wsj/split1/wsj1.train.original"
+    parser.add_argument('--dev')  # "../data/POS-penn/wsj/split1/wsj1.dev.original"
+    parser.add_argument('--test')  # "../data/POS-penn/wsj/split1/wsj1.test.original"
     parser.add_argument('--window_size', default=5)
     parser.add_argument('--data_name', default='wsj_split1')
-    parser.add_argument('--test_data')  # test_data = "../data/POS-penn/wsj/split1/wsj1.test.original"
+    parser.add_argument('--overwrite', action='store_true')
+    # word2vec_path = "../data/word2vec/vectors.bin"
+    parser.add_argument('--word2vec', default='../data/word2vec/GoogleNews-vectors-negative300.bin')
+    parser.add_argument('--model_base', default='../models/FinestTune/pos')
 
     args = parser.parse_args()
-
-    if args.test:
-        if args.test_data is None:
-            parser.error("--test_data is required when --test flag is on.")
 
     if not (args.test or args.train):
         parser.error("No action requested, add --test or --train.")
 
     oov_embedding = args.oov
 
-    lookup = Lookup(word2vec_path)
+    lookup = Lookup(args.word2vec)
 
     models = {}
-    if args.train:
+    if args.train is not None:
         # If training flag is activated, we will use these trained models directly.
-        models = train(args.model, lookup, oov_embedding, train_path, dev_path, args.window_size, args.data_name)
+        models = train(args.model, args.model_base, lookup, oov_embedding, args.train, args.dev, args.window_size,
+                       args.data_name, args.overwrite)
 
-    if args.test:
+    if args.test is not None:
         if len(models) == 0:
             # Trying to load existing model.
-            models = read_models(args.data_name, args.model, oov_embedding)
-        test(models, lookup, oov_embedding, args.test_data, args.window_size)
+            models = read_models(args.model_base, args.data_name, args.model)
+        test(models, lookup, oov_embedding, args.test, args.window_size)
 
 
 if __name__ == '__main__':
