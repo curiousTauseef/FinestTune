@@ -12,7 +12,7 @@ import argparse
 
 import sys
 
-logger = utils.get_logger("Main")
+logger = utils.get_logger(__name__)
 
 
 def ensure_dir(p):
@@ -82,22 +82,31 @@ def get_model_directory(model_output_base, data_set_name, model_name):
 
 def test(trained_models, lookup, oov_embedding, test_conll, window_size):
     logger.info("Testing condition - [OOV Vector] : %s ; [Test Data] : %s ." % (oov_embedding, test_conll))
-    for model_name, (model, pos_alphabet, word_alphabet) in trained_models.iteritems():
+    for model_name, (model, pos_alphabet, train_alphabet) in trained_models.iteritems():
+        alphabet_for_test = train_alphabet.get_copy()
+
         if oov_embedding == "pretrained":
-            word_alphabet.restart_auto_grow()
-        original_alphabet_size = word_alphabet.size()
+            alphabet_for_test.restart_auto_grow()
+        elif oov_embedding == "random":
+            alphabet_for_test.stop_auto_grow()
+
+        original_alphabet_size = alphabet_for_test.size()
+        logger.info("Original alphabet size is %d" % original_alphabet_size)
 
         word_sentences_test, pos_sentences_test, _, _ = processor.read_conll(test_conll)
-        x_test = processor.slide_all_sentences(word_sentences_test, word_alphabet, window_size)
+        x_test = processor.slide_all_sentences(word_sentences_test, alphabet_for_test, window_size)
         y_test = processor.get_all_one_hots(pos_sentences_test, pos_alphabet)
 
+        test_model = model
         if oov_embedding == "pretrained":
+            logger.info("New alphabet size is %d" % alphabet_for_test.size())
             #  A new embedding using the extended word alphabet.
-            new_embeddings = lookup.w2v_lookup(word_alphabet)
+            new_embeddings = lookup.w2v_lookup(alphabet_for_test)
             additional_embeddings = new_embeddings[original_alphabet_size:]
-            model.augment_embedding(additional_embeddings)
+            logger.info("New embedding size is %d" % len(additional_embeddings))
+            test_model = model.augment_embedding(additional_embeddings)
 
-        evaluate_result = model.test(x_test, y_test)
+        evaluate_result = test_model.test(x_test, y_test)
         try:
             result_str = ", ".join("%.4f" % f for f in evaluate_result)
         except TypeError:

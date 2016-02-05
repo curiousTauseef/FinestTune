@@ -10,6 +10,9 @@ import os
 from finest.utils.callbacks import MonitorLoss
 import finest.utils.utils as utils
 from keras.utils.visualize_util import plot
+import json
+
+logger = utils.get_logger(__name__)
 
 
 class BaseLearner(object):
@@ -134,14 +137,45 @@ class BaseLearner(object):
         :param model_directory: Directory to save model and weights
         :return:
         """
-        self.model = model_from_json(open(os.path.join(model_directory, self.__architecture_name)).read())
-        self.model.load_weights(os.path.join(model_directory, self.__weights_name))
+        self.set_architecture(open(os.path.join(model_directory, self.__architecture_name)).read())
+        self.load_weights_from_file(os.path.join(model_directory, self.__weights_name))
+
+    def set_architecture(self, architecture_json):
+        self.model = model_from_json(architecture_json)
+
+    def load_weights_from_file(self, weights):
+        self.model.load_weights(weights)
+
+    def set_weights(self, weights):
+        self.model.set_weights(weights)
 
     def augment_embedding(self, additional_weights):
-        embedding_node = self.model.nodes[self._embedding_layer_name]
-        if embedding_node is None:
-            raise RuntimeError("Embedding layer [%s] is not set." % self._embedding_layer_name)
-        old_weights = embedding_node.get_weights()
-        # TODO check how to stack.
-        new_weights = np.vstack([old_weights, additional_weights])
-        embedding_node.set_weights(new_weights)
+        weights = []
+        original_embedding_size = 0
+
+        for layer_name, layer in self.model.nodes.iteritems():
+            layer_weight = layer.get_weights()
+            if layer_name == self._embedding_layer_name:
+                # Embedding layer have one element of shape (input_dim, output_dim).
+                old_weights = layer_weight[0]
+                new_weights = np.vstack([old_weights, additional_weights])
+                weights += [new_weights]
+                original_embedding_size = layer.input_dim
+            else:
+                weights += layer_weight
+
+        additional_embedding_size = additional_weights.shape[0]
+        new_embedding_size = original_embedding_size + additional_embedding_size
+        logger.info("Additional embeddings added is of size %d." % additional_embedding_size)
+
+        new_config = json.loads(self.model.to_json())
+
+        embedding_config = new_config["nodes"][self._embedding_layer_name]
+        embedding_config['input_shape'] = [new_embedding_size]
+        embedding_config['input_dim'] = new_embedding_size
+
+        new_model = BaseLearner()
+        new_model.set_architecture(json.dumps(new_config))
+        new_model.set_weights(weights)
+
+        return new_model

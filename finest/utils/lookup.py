@@ -5,7 +5,7 @@ from gensim.models.word2vec import Word2Vec
 import numpy as np
 from finest.utils import utils
 
-logger = utils.get_logger("Lookup")
+logger = utils.get_logger(__name__)
 
 
 def uniform_embedding(shape, scale=0.0001):
@@ -38,8 +38,13 @@ class Lookup:
         table = np.empty([alphabet.size(), self.model.vector_size])
         table[alphabet.default_index, :] = uniform_embedding([1, self.model.vector_size])
 
+        max_index = 0
+
         for w, index in alphabet.iteritems():
             embedding = self.model[w] if w in self.model else uniform_embedding([1, self.model.vector_size])
             table[index, :] = embedding
+
+            if index > max_index:
+                max_index = index
 
         return table
