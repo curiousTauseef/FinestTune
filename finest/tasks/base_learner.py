@@ -5,83 +5,55 @@ A base learner that does not have any architecture. Implementations need to fill
 import numpy as np
 from keras.callbacks import EarlyStopping
 from keras.models import model_from_json
-from keras.models import Sequential, Graph
 import os
 from finest.utils.callbacks import MonitorLoss
 import finest.utils.utils as utils
 from keras.utils.visualize_util import plot
-import json
+
+from finest.utils.configs import ExperimentConfig
 
 logger = utils.get_logger(__name__)
 
 
 class BaseLearner(object):
-    def __init__(self, graph_mode=True):
+    def __init__(self):
         self.logger = utils.get_logger('Learner')
         self._embedding_layer_name = 'embedding'
-        self._main_input_layer_name = 'input'
-        self._main_output_layer_name = "prediction_output"
-        self._graph_mode = graph_mode
-
-        self.model = self._get_model()
 
         self.__monitor = 'val_acc'
         self.__weights_name = 'weights.h5'
         self.__architecture_name = 'architecture.json'
         self.__model_graph_name = 'structure.png'
 
-        self.setup()
-
-    def _get_model(self):
-        if self._graph_mode:
-            return Graph()
-        else:
-            return Sequential()
+        self.model = self.setup()
 
     def setup(self):
         pass
 
-    def train_with_validation(self, x_train, y_train, x_dev, y_dev, early_stop=True):
+    def train_with_validation(self, train_x, train_y, dev_data, early_stop=True):
         self.logger.info("Training the model with provided validation.")
-        train_data = {self._main_input_layer_name: x_train, self._main_output_layer_name: y_train}
-        dev_data = {self._main_input_layer_name: x_dev, self._main_output_layer_name: y_dev}
-        if early_stop:
-            if self._graph_mode:
-                hist = self.model.fit(train_data, validation_data=dev_data, callbacks=[self.__get_early_stop()])
-            else:
-                hist = self.model.fit(x_train, y_train, validation_data=(x_dev, y_dev),
-                                      callbacks=[self.__get_early_stop()])
-        else:
-            if self._graph_mode:
-                hist = self.model.fit(train_data, validation_data=dev_data, callbacks=[self.__get_loss_monitor()])
-            else:
-                hist = self.model.fit(x_train, y_train, validation_data=(x_dev, y_dev),
-                                      callbacks=[self.__get_loss_monitor()])
 
+        if early_stop:
+            hist = self.model.fit(train_x, train_y, validation_data=dev_data, callbacks=[self.__get_early_stop()])
+        else:
+            hist = self.model.fit(train_x, train_y, validation_data=dev_data, callbacks=[self.__get_loss_monitor()])
         return hist
 
-    def train(self, x_train, y_train, early_stop=True):
+    def train(self, train_x, train_y, early_stop=True):
         """
         Train the data.
-        :param x_train: A 2-D array of shape [nb_samples, window size], which represent all the windowed sequence.
-        :param y_train: A 2-D array of shape [nb_samples, nb_classes], which are one hot vector of the output.
+        :param train_x: A dict of named training data. Each value is a 2-D array of shape [nb_samples, window size],
+        which represent all the windowed sequence.
+        :param train_y: A dict of named training data labels, Each value is a 2-D array of shape [nb_samples,
+        nb_classes], which are one hot vector of the output.
         :param early_stop: Whether to early stop the model.
         :return:
         """
         self.logger.info("Training the model.")
-        train_data = {self._main_input_layer_name: x_train, self._main_output_layer_name: y_train}
         if early_stop:
-            if self._graph_mode:
-                hist = self.model.fit(train_data, validation_split=0.1, callbacks=[self.__get_early_stop()])
-            else:
-                hist = self.model.fit(x_train, y_train, validation_split=0.1, callbacks=[self.__get_early_stop()],
-                                      show_accuracy=True)
+            hist = self.model.fit(train_x, train_y, validation_split=0.1, callbacks=[self.__get_early_stop()])
         else:
-            if self._graph_mode:
-                hist = self.model.fit(train_data, callbacks=[self.__get_loss_monitor()])
-            else:
-                hist = self.model.fit(x_train, y_train, callbacks=[self.__get_early_stop()], show_accuracy=True)
-
+            hist = self.model.fit(train_x, train_y, callbacks=[self.__get_loss_monitor()])
         return hist
 
     def __get_early_stop(self):
@@ -90,14 +62,9 @@ class BaseLearner(object):
     def __get_loss_monitor(self):
         return MonitorLoss(logger=self.logger, monitor=self.__monitor)
 
-    def test(self, x_test, y_test):
+    def test(self, test_x, test_y):
         self.logger.info("Testing the model.")
-
-        if self._graph_mode:
-            test_data = {self._main_input_layer_name: x_test, self._main_output_layer_name: y_test}
-            res = self.model.evaluate(test_data)
-        else:
-            res = self.model.evaluate(x_test, y_test, show_accuracy=True)
+        res = self.model.evaluate(test_x, test_y)
         return res
 
     def save(self, model_directory, overwrite=False):
@@ -149,33 +116,22 @@ class BaseLearner(object):
     def set_weights(self, weights):
         self.model.set_weights(weights)
 
-    def augment_embedding(self, additional_weights):
-        weights = []
-        original_embedding_size = 0
+    def get_embedding_layer(self):
+        return self.model.get_layer(self._embedding_layer_name)
 
-        for layer_name, layer in self.model.nodes.iteritems():
-            layer_weight = layer.get_weights()
-            if layer_name == self._embedding_layer_name:
-                # Embedding layer have one element of shape (input_dim, output_dim).
-                old_weights = layer_weight[0]
-                new_weights = np.vstack([old_weights, additional_weights])
-                weights += [new_weights]
-                original_embedding_size = layer.input_dim
-            else:
-                weights += layer_weight
+    def augment_embedding(self, additional_weights):
+        embedding_layer = self.model.get_layer(self._embedding_layer_name)
+        # The embedding layer weights is a singleton list of only one weights element.
+        old_embedding_weights = self.model.get_layer(self._embedding_layer_name).get_weights()[0]
+        new_weights = np.vstack([old_embedding_weights, additional_weights])
 
         additional_embedding_size = additional_weights.shape[0]
-        new_embedding_size = original_embedding_size + additional_embedding_size
-        logger.info("Additional embeddings added is of size %d." % additional_embedding_size)
+        new_embedding_size = embedding_layer.input_dim + additional_embedding_size
 
-        new_config = json.loads(self.model.to_json())
+        logger.info("Changing the embedding dimension into %d x %d." % (new_weights.shape[0], new_weights.shape[1]))
 
-        embedding_config = new_config["nodes"][self._embedding_layer_name]
-        embedding_config['input_shape'] = [new_embedding_size]
-        embedding_config['input_dim'] = new_embedding_size
+        # Replace the Keras model with the augmented model.
+        augmented_model = utils.change_single_node_layer_weights(self.model, self._embedding_layer_name,
+                                                                 [new_weights], input_dim=new_embedding_size)
 
-        new_model = BaseLearner()
-        new_model.set_architecture(json.dumps(new_config))
-        new_model.set_weights(weights)
-
-        return new_model
+        return augmented_model

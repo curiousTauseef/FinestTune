@@ -1,18 +1,23 @@
 import numpy as np
 from collections import deque
 from finest.utils.alphabet import Alphabet
+import finest.utils.utils as utils
 
 padding_symbol = "##PADDING##"
 
+logger = utils.get_logger(__name__)
 
-def read_conll(path):
+
+def read_conll(path, label_alphabet=None):
     word_sentences = []
     pos_sentences = []
     words = []
     poses = []
 
     word_alphabet = Alphabet('word', (padding_symbol,))
-    pos_alphabet = Alphabet('pos', (padding_symbol,))
+
+    if label_alphabet is None:
+        label_alphabet = Alphabet('label', (padding_symbol,))
 
     with open(path) as f:
         for l in f:
@@ -28,9 +33,14 @@ def read_conll(path):
                 words.append(word)
                 poses.append(pos)
                 word_alphabet.add(word)
-                pos_alphabet.add(pos)
+                label_alphabet.add(pos)
 
-    return word_sentences, pos_sentences, word_alphabet, pos_alphabet
+    # Add the last sentence in.
+    if len(words) > 0:
+        word_sentences.append(words[:])
+        pos_sentences.append(poses[:])
+
+    return word_sentences, pos_sentences, word_alphabet, label_alphabet
 
 
 def slide_sentence(words, alphabet, window_size):
@@ -80,6 +90,10 @@ def copy_window(window, alphabet, slided_data, slice_index):
 
 def slide_all_sentences(sentences, alphabet, window_size):
     slice_list = []
+
+    if len(sentences) == 0:
+        raise IndexError("Number of sentences read is zero, cannot proceed.")
+
     for sentence in sentences:
         if len(sentence) > 0:
             slided_sentence = slide_sentence(sentence, alphabet, window_size)
@@ -87,14 +101,30 @@ def slide_all_sentences(sentences, alphabet, window_size):
     return np.vstack(slice_list)
 
 
+def get_center_embedding(data, embedding_lookup):
+    """
+    Convert the window based instances to their center word's embedding.
+    :param data:
+    :param embedding_lookup:
+    :return: Numpy array of the center word's embedding.
+    """
+    embedding_dimension = embedding_lookup.shape[1]
+    data_size = data.shape[0]
+    center_index = data.shape[1] / 2
+
+    embeddings = np.zeros((data_size, embedding_dimension))
+
+    for row, d in enumerate(data):
+        embeddings[row, :] = embedding_lookup[d[center_index]]
+
+
 def get_one_hot(instances, alphabet):
     """
-    Represent each single element in the list with a one-hot vector.
+    Transform the index based elements into an one-hot vector.
     :param instances: The list of the elements.
     :param alphabet: Lookup alphabet for the element's index.
     :return: Numpy array of one-hot vectors.
     """
-
     labels = np.zeros([len(instances), alphabet.size()])
     for index, instance in enumerate(instances):
         labels[index, alphabet.get_index(instance)] = 1
@@ -102,6 +132,12 @@ def get_one_hot(instances, alphabet):
 
 
 def get_all_one_hots(instances_list, alphabet):
+    """
+    Turn the instance list to one hot vector matrix.
+    :param instances_list:
+    :param alphabet:
+    :return:
+    """
     all_labels = []
     for instances in instances_list:
         all_labels.append(get_one_hot(instances, alphabet))

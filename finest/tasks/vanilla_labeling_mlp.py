@@ -3,97 +3,55 @@ Implement the Multi-layer perceptron based sequence tagger, following the Senna 
 POS and NER.
 """
 
-from keras.layers.core import Dense, Flatten
+from keras.layers import Input, Dense, Flatten
+from keras.models import Model
 from keras.layers.embeddings import Embedding
-from keras.optimizers import Adadelta
 from keras.regularizers import l2
 from finest.tasks.base_learner import BaseLearner
-
-
-class HParams:
-    def __init__(self):
-        pass
-
-    num_hidden_units = 300
-    num_middle_layers = 3
-
-    # Relu is only available in development branch of Theano at the moment
-    hidden_activation = "relu"
-    regularizer = l2(0.001)
-
-    output_layer_type = 'softmax'
-    output_loss = 'categorical_crossentropy'
-    optimizer = Adadelta()
+from finest.utils.configs import MLPConfig, ExperimentConfig
 
 
 class VanillaLabelingMlp(BaseLearner):
-    def __init__(self, embeddings, pos_dim, vocabulary_size, window_size, graph_mode=True, fix_embedding=False):
+    def __init__(self, embeddings, pos_dim, vocabulary_size, window_size, fix_embedding=False):
         self.window_size = window_size
         self.embeddings = embeddings
         self.fix_embedding = fix_embedding
-        self.embedding_size = embeddings.shape[1]
+        self.embedding_dimension = embeddings.shape[1]
         self.pos_dim = pos_dim
         self.vocabulary_size = vocabulary_size
 
-        super(VanillaLabelingMlp, self).__init__(graph_mode)
+        super(VanillaLabelingMlp, self).__init__()
 
         self.logger.info("Pos Labels : %d, Embedding Dimension : %d, Vocabulary Size : %d" % (
-            self.pos_dim, self.embedding_size, self.vocabulary_size))
+            self.pos_dim, self.embedding_dimension, self.vocabulary_size))
 
     def setup(self):
-        if self._graph_mode:
-            self.setup_graph()
-        else:
-            self.setup_sequential()
-
-    def setup_sequential(self):
-        # The Sequential setup way.
         self.logger.info("Setting up layers.")
 
-        # Add embedding layer.
-        self.model.add(Embedding(output_dim=self.embedding_size, input_dim=self.vocabulary_size,
-                                 weights=[self.embeddings], input_length=self.window_size,
-                                 trainable=not self.fix_embedding))
-        self.logger.info("Embedded sequence output is %s" % str(self.model.output_shape))
-        self.model.add(Flatten())
-        self.logger.info("Flattened output is %s" % str(self.model.output_shape))
+        inputs = Input(shape=(self.window_size,), name=ExperimentConfig.main_input_name, dtype='int32')
+
+        # Adding embedding layer, this will create a 3 dimension tensor for the whole sequence.
+        embeddings = Embedding(output_dim=self.embedding_dimension, input_dim=self.vocabulary_size,
+                               weights=[self.embeddings], input_length=self.window_size,
+                               trainable=not self.fix_embedding, name=self._embedding_layer_name)(inputs)
+
+        flatten = Flatten()(embeddings)
 
         # Adding deep layers.
-        for _ in range(HParams.num_middle_layers):
-            self.model.add(Dense(output_dim=HParams.num_hidden_units, init='uniform', W_regularizer=HParams.regularizer,
-                                 activation=HParams.hidden_activation))
+        prev_layer = flatten
+        for _ in range(MLPConfig.num_middle_layers):
+            prev_layer = Dense(output_dim=MLPConfig.num_hidden_units, init='uniform',
+                               W_regularizer=MLPConfig.regularizer, activation=MLPConfig.hidden_activation)(prev_layer)
 
         # Add output layer.
-        self.model.add(Dense(output_dim=self.pos_dim, init='uniform', W_regularizer=l2(),
-                             activation=HParams.output_layer_type))
-        self.model.compile(loss=HParams.output_loss, optimizer=HParams.optimizer)
-        self.logger.info("Done setting layers.")
+        label_output = Dense(output_dim=self.pos_dim, init='uniform', W_regularizer=l2(),
+                             activation=MLPConfig.label_output_layer_type,
+                             name=ExperimentConfig.main_output_name
+                             )(prev_layer)
 
-    def setup_graph(self):
-        # The graph setup way.
-        self.logger.info("Setting up layers.")
+        model = Model(input=inputs, output=label_output)
+        model.compile(loss=MLPConfig.label_output_loss, optimizer=MLPConfig.optimizer)
 
-        self.model.add_input(name='input', input_shape=(self.window_size,), dtype='int32')
-        self.model.add_node(Embedding(output_dim=self.embedding_size, input_dim=self.vocabulary_size,
-                                      weights=[self.embeddings], input_length=self.window_size,
-                                      trainable=not self.fix_embedding),
-                            name=self._embedding_layer_name, input=self._main_input_layer_name)
+        self.logger.info("Done setting layers for vanilla MLP.")
 
-        self.model.add_node(Flatten(), name='flatten', input=self._embedding_layer_name)
-
-        # Adding deep layers.
-        previous_name = 'flatten'
-        for i in range(HParams.num_middle_layers):
-            self.model.add_node(Dense(output_dim=HParams.num_hidden_units, init='uniform',
-                                      W_regularizer=HParams.regularizer, activation=HParams.hidden_activation),
-                                name=('dense_%d' % i), input=previous_name)
-            previous_name = 'dense_%d' % i
-
-        # Add output layer.
-        self.model.add_node(Dense(output_dim=self.pos_dim, init='uniform', W_regularizer=l2(),
-                                  activation=HParams.output_layer_type), name='pos_output', input=previous_name)
-        self.model.add_output(name=self._main_output_layer_name, input='pos_output')
-
-        self.logger.info("Prepare to compile.")
-        self.model.compile(loss={self._main_output_layer_name: HParams.output_loss}, optimizer=HParams.optimizer)
-        self.logger.info("Done setting layers.")
+        return model
